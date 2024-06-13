@@ -9,3 +9,7 @@ export function daysAgo(n) {
   date.setDate(date.getDate() - n)
   return date
 }
+
+export function nullify(value) {
+  return !value ? null : value
+}

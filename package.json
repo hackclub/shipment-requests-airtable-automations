@@ -1,1 +1,1 @@
-{ "dependencies": { "@easypost/api": "^7.3.0", "dotenv": "^16.4.5", "easypost": "^0.1.1" } }
+{ "dependencies": { "@easypost/api": "^7.3.0", "airtable": "^0.12.2", "dotenv": "^16.4.5", "easypost": "^0.1.1" } }
