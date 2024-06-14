@@ -70,12 +70,25 @@ async function getZenventoryOrders(apiKey, apiSecret, startDate = '2024-01-01', 
   return rows
 }
 
+console.log("Getting shipment requests...")
 let shipmentRequests = await getAirtableShipmentRequests(airtable)
+console.log("Exporting shipments from Zenventory...")
 let orders = await getZenventoryOrders(process.env.ZENVENTORY_API_KEY, process.env.ZENVENTORY_API_SECRET)
 
-console.log(orders[99])
-
 for (let shipment of shipmentRequests) {
+  console.log("Processing shipment for", shipment.fields['First Name'])
+
+  // first check if we already have the info on file, and just need to check for easypost delivery
+  if (shipment.fields['Warehouse–Service']) {
+    if (shipment.fields['Warehouse–EasyPost Tracker ID'] && !shipment.fields['Warehouse–Delivered At']) {
+      console.log("  Skipping for EasyPost...")
+    } else {
+      console.log("  Skipping because first class shipment with info on file")
+    }
+    continue // TODO implement this
+  }
+
+  // then do the full processing for shipments that need info imported from zenventory
   let matchingOrder = orders.find(o => o.orderNumber == shipment.id)
   if (!matchingOrder) continue
 
@@ -88,6 +101,7 @@ for (let shipment of shipmentRequests) {
     updates['Warehouse–Tracking Number'] = matchingOrder.trackingNumber
 
     try {
+      console.log("  Making tracker...")
       let tracker = await easypost.Tracker.create({
         tracking_code: matchingOrder.trackingNumber
       })
@@ -96,10 +110,12 @@ for (let shipment of shipmentRequests) {
 
       updates['Warehouse–EasyPost Tracker ID'] = tracker.id
       updates['Warehouse–Tracking URL'] = tracker.public_url
-    } catch { // api error
-      continue
+    } catch {
+      // api error
+      console.log("  Error making tracker")
     }
   }
 
+  console.log("Pushing updates...", updates)
   await shipment.updateFields(updates)
 }
