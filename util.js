@@ -13,3 +13,15 @@ export function daysAgo(n) {
 export function nullify(value) {
   return !value ? null : value
 }
+
+export function convertKeysToLowerCamelCase(obj) {
+  return Object.keys(obj).reduce((acc, key) => {
+    const lowerCamelCaseKey = key
+      .replace(/[^A-Za-z]+/g, ' ')
+      .split(/\s+|_+|-+/)
+      .map((word, index) => index === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join('');
+    acc[lowerCamelCaseKey] = obj[key];
+    return acc;
+  }, {});
+}
