@@ -76,32 +76,45 @@ console.log("Exporting shipments from Zenventory...")
 let orders = await getZenventoryOrders(process.env.ZENVENTORY_API_KEY, process.env.ZENVENTORY_API_SECRET)
 
 for (let shipment of shipmentRequests) {
+  let updates = {}
+
   console.log("Processing shipment for", shipment.fields['First Name'])
 
   // first check if we already have the info on file, and just need to check for easypost delivery
   if (shipment.fields['Warehouse–Service']) {
-    if (shipment.fields['Warehouse–EasyPost Tracker ID'] && !shipment.fields['Warehouse–Delivered At']) {
-      console.log("  Skipping for EasyPost...")
+    let trackerId = shipment.fields['Warehouse–EasyPost Tracker ID']
+
+    if (trackerId && !shipment.fields['Warehouse–Delivered At']) {
+      console.log("  EasyPost info on file, but not marked as delivered. Checking status.")
+      const tracker = await easypost.Tracker.retrieve(trackerId)
+
+      if (tracker.status == 'delivered') {
+        let deliveryTime = new Date(tracker.tracking_details[tracker.tracking_details.length - 1].datetime)
+
+        updates['Warehouse–Delivered At'] = deliveryTime
+      }
+
     } else {
       console.log("  Skipping because first class shipment with info on file")
+      continue // TODO implement this
     }
-    continue // TODO implement this
   }
 
   // then do the full processing for shipments that need info imported from zenventory
   let matchingOrder = orders.find(o => o.orderNumber == shipment.id)
-  if (!matchingOrder) continue
+  if (!matchingOrder) {
+    console.log("  No matching Zenventory order found...")
+    continue
+  }
 
-  let updates = {}
-
-  updates['Warehouse–Service'] = `${matchingOrder.carrier}${matchingOrder.service ? ` (${matchingOrder.service})` : ''}`
-  updates['Warehouse–Postage Cost'] = Number(matchingOrder.shippingHandling)
+  if (!shipment.fields['Warehouse–Service']) updates['Warehouse–Service'] = `${matchingOrder.carrier}${matchingOrder.service ? ` (${matchingOrder.service})` : ''}`
+  if (!shipment.fields['Warehouse–Postage Cost']) updates['Warehouse–Postage Cost'] = Number(matchingOrder.shippingHandling)
 
   if (!shipment.fields['Warehouse–EasyPost Tracker ID'] && !!matchingOrder.trackingNumber) {
     updates['Warehouse–Tracking Number'] = matchingOrder.trackingNumber
 
     try {
-      console.log("  Making tracker...")
+      console.log("  Making tracker")
       let tracker = await easypost.Tracker.create({
         tracking_code: matchingOrder.trackingNumber
       })
@@ -116,6 +129,10 @@ for (let shipment of shipmentRequests) {
     }
   }
 
-  console.log("Pushing updates...", updates)
-  await shipment.updateFields(updates)
+  if (Object.keys(updates).length > 0) {
+    console.log("  Pushing updates...", updates)
+    await shipment.updateFields(updates)
+  } else {
+    console.log("  No updates needed")
+  }
 }
