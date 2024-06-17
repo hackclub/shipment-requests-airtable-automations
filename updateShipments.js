@@ -176,7 +176,7 @@ for (let shipment of shipmentRequests) {
   if (!shipment.fields['Warehouse–Items Ordered JSON']) updates['Warehouse–Items Ordered JSON'] = JSON.stringify(matchingOrder, null, 2)
 
   if (!shipment.fields['Warehouse–EasyPost Tracker ID'] && !!matchingShipment.trackingNumber) {
-    updates['Warehouse–Tracking Number'] = matchingShipment.trackingNumber
+    if (!shipment.fields['Warehouse–Tracking Number']) updates['Warehouse–Tracking Number'] = matchingShipment.trackingNumber
 
     try {
       console.log("  Making tracker")
