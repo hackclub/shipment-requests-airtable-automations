@@ -19,7 +19,17 @@ async function getAirtableShipmentRequests(airtableBase) {
       //
       // if easypost tracker id is set, but delivered at is not, then the item
       // is en route and we need to check delivery status
-      filterByFormula: 'AND(OR(AND({Warehouse–EasyPost Tracker ID}, {Warehouse–Delivered At} = BLANK()), {Warehouse–Service} = BLANK()), {Send To Warehouse})'
+      filterByFormula: `
+AND(
+  OR(
+    AND(
+      {Warehouse–EasyPost Tracker ID},
+      {Warehouse–Delivered At} = BLANK()
+    ),
+    {Warehouse–Service} = BLANK()
+  ),
+  {Send To Warehouse}
+)`
     }).eachPage((records, fetchNextPage) => {
       records.forEach(record => shipments.push(record))
       fetchNextPage()
@@ -85,25 +95,25 @@ for (let shipment of shipmentRequests) {
     let trackerId = shipment.fields['Warehouse–EasyPost Tracker ID']
 
     if (trackerId && !shipment.fields['Warehouse–Delivered At']) {
-      console.log("  EasyPost info on file, but not marked as delivered. Checking status.")
+      console.log("  EasyPost info on file, but not marked as delivered. Checking status...")
       const tracker = await easypost.Tracker.retrieve(trackerId)
 
+      console.log(`    Tracker status: ${tracker.status}`)
+
       if (tracker.status == 'delivered') {
+        console.log(`      Marking as delivered in Airtable`)
         let deliveryTime = new Date(tracker.tracking_details[tracker.tracking_details.length - 1].datetime)
 
         updates['Warehouse–Delivered At'] = deliveryTime
       }
 
-    } else {
-      console.log("  Skipping because first class shipment with info on file")
-      continue // TODO implement this
     }
   }
 
   // then do the full processing for shipments that need info imported from zenventory
   let matchingOrder = orders.find(o => o.orderNumber == shipment.id)
   if (!matchingOrder) {
-    console.log("  No matching Zenventory order found...")
+    console.log("  No matching Zenventory shipment found...")
     continue
   }
 
