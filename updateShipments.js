@@ -79,8 +79,6 @@ async function getZenventoryOrders(apiKey, apiSecret, reportName, startDate = '2
       .on('data', row => {
         row = convertKeysToLowerCamelCase(row)
 
-        console.log(row)
-
         orders[row.co] ||= []
 
         orders[row.co].push({
