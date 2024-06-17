@@ -1,6 +1,6 @@
 import { parseString } from 'fast-csv'
 
-import { base64Encode, convertKeysToLowerCamelCase } from "./util"
+import { base64Encode, convertKeysToLowerCamelCase, laborCost } from "./util"
 
 import trackingInfo from 'tracking-url'
 import Airtable from 'airtable'
@@ -22,11 +22,17 @@ async function getAirtableShipmentRequests(airtableBase) {
       filterByFormula: `
 AND(
   OR(
-    AND(
-      {Warehouse–EasyPost Tracker ID},
-      {Warehouse–Delivered At} = BLANK()
+    OR(
+      OR(
+        AND(
+          {Warehouse–EasyPost Tracker ID},
+          {Warehouse–Delivered At} = BLANK()
+        ),
+        {Warehouse–Service} = BLANK()
+      ),
+      {Warehouse–Items Ordered JSON} = BLANK()
     ),
-    {Warehouse–Service} = BLANK()
+    {Warehouse–Labor Cost} = BLANK()
   ),
   {Send To Warehouse}
 )`
@@ -41,7 +47,54 @@ AND(
   })
 }
 
-async function getZenventoryOrders(apiKey, apiSecret, startDate = '2024-01-01', endDate = '2024-12-31') {
+async function getZenventoryOrder(apiKey, apiSecret, orderNumber) {
+  let resp = await fetch(`https://app.zenventory.com/rest/customer-orders/${orderNumber}`, {
+    headers: {
+      'Authorization': `Basic ${base64Encode(apiKey + ':' + apiSecret)}`
+    }
+  })
+
+  return await resp.json()
+}
+
+async function getZenventoryOrders(apiKey, apiSecret, reportName, startDate = '2024-01-01', endDate = '2024-12-31') {
+  let urlParams = new URLSearchParams({
+    csv: true,
+    startDate,
+    endDate
+  })
+
+  let resp = await fetch('https://app.zenventory.com/rest/reports/fulfillment/ful_order_detail?' + urlParams.toString(), {
+    headers: {
+      'Authorization': `Basic ${base64Encode(apiKey + ':' + apiSecret)}`
+    }
+  })
+
+  let csv = await resp.text()
+
+  return new Promise((resolve, reject) => {
+    let orders = {}
+
+    parseString(csv, { headers: true })
+      .on('data', row => {
+        row = convertKeysToLowerCamelCase(row)
+
+        console.log(row)
+
+        orders[row.co] ||= []
+
+        orders[row.co].push({
+          sku: row.sku,
+          name: row.description,
+          quantity: row.orderedQty
+        })
+      })
+      .on('error', error => reject(error))
+      .on('end', rowCount => resolve(orders))
+  })
+}
+
+async function getZenventoryShipments(apiKey, apiSecret, reportName, startDate = '2024-01-01', endDate = '2024-12-31') {
   let urlParams = new URLSearchParams({
     csv: true,
     startDate,
@@ -82,15 +135,25 @@ async function getZenventoryOrders(apiKey, apiSecret, startDate = '2024-01-01', 
 
 console.log("Getting shipment requests...")
 let shipmentRequests = await getAirtableShipmentRequests(airtable)
-console.log("Exporting shipments from Zenventory...")
+console.log("Exporting orders from Zenventory...")
 let orders = await getZenventoryOrders(process.env.ZENVENTORY_API_KEY, process.env.ZENVENTORY_API_SECRET)
+console.log("Exporting shipments from Zenventory...")
+let shipments = await getZenventoryShipments(process.env.ZENVENTORY_API_KEY, process.env.ZENVENTORY_API_SECRET)
 
 for (let shipment of shipmentRequests) {
   let updates = {}
 
   console.log("Processing shipment for", shipment.fields['First Name'])
 
-  // first check if we already have the info on file, and just need to check for easypost delivery
+  // then do the full processing for shipments that need info imported from zenventory
+  let matchingShipment = shipments.find(s => s.orderNumber == shipment.id)
+  let matchingOrder = orders[shipment.id]
+  if (!matchingShipment || !matchingOrder) {
+    console.log("  No matching Zenventory shipment & order found...")
+    continue
+  }
+
+  // if the package has shipped, check and update the delivery status
   if (shipment.fields['Warehouse–Service']) {
     let trackerId = shipment.fields['Warehouse–EasyPost Tracker ID']
 
@@ -106,27 +169,21 @@ for (let shipment of shipmentRequests) {
 
         updates['Warehouse–Delivered At'] = deliveryTime
       }
-
     }
   }
 
-  // then do the full processing for shipments that need info imported from zenventory
-  let matchingOrder = orders.find(o => o.orderNumber == shipment.id)
-  if (!matchingOrder) {
-    console.log("  No matching Zenventory shipment found...")
-    continue
-  }
+  if (!shipment.fields['Warehouse–Service']) updates['Warehouse–Service'] = `${matchingShipment.carrier}${matchingShipment.service ? ` (${matchingShipment.service})` : ''}`
+  if (!shipment.fields['Warehouse–Postage Cost']) updates['Warehouse–Postage Cost'] = Number(matchingShipment.shippingHandling)
+  if (!shipment.fields['Warehouse–Labor Cost']) updates['Warehouse–Labor Cost'] = laborCost(matchingOrder)
+  if (!shipment.fields['Warehouse–Items Ordered JSON']) updates['Warehouse–Items Ordered JSON'] = JSON.stringify(matchingOrder, null, 2)
 
-  if (!shipment.fields['Warehouse–Service']) updates['Warehouse–Service'] = `${matchingOrder.carrier}${matchingOrder.service ? ` (${matchingOrder.service})` : ''}`
-  if (!shipment.fields['Warehouse–Postage Cost']) updates['Warehouse–Postage Cost'] = Number(matchingOrder.shippingHandling)
-
-  if (!shipment.fields['Warehouse–EasyPost Tracker ID'] && !!matchingOrder.trackingNumber) {
-    updates['Warehouse–Tracking Number'] = matchingOrder.trackingNumber
+  if (!shipment.fields['Warehouse–EasyPost Tracker ID'] && !!matchingShipment.trackingNumber) {
+    updates['Warehouse–Tracking Number'] = matchingShipment.trackingNumber
 
     try {
       console.log("  Making tracker")
       let tracker = await easypost.Tracker.create({
-        tracking_code: matchingOrder.trackingNumber
+        tracking_code: matchingShipment.trackingNumber
       })
 
       console.log(`Created EasyPost tracker`)

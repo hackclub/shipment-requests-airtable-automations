@@ -25,3 +25,8 @@ export function convertKeysToLowerCamelCase(obj) {
     return acc;
   }, {});
 }
+
+// $1.80 base * $0.20 per SKU
+export function laborCost(zenventoryOrder) {
+  return 1.80 + (zenventoryOrder.length * 0.20)
+}
