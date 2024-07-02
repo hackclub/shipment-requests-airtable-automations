@@ -24,9 +24,15 @@ AND(
   OR(
     OR(
       OR(
-        AND(
-          {Warehouse–EasyPost Tracker ID},
-          {Warehouse–Delivered At} = BLANK()
+        OR(
+          AND(
+            {Warehouse–EasyPost Tracker ID} = BLANK(),
+            {Warehouse–Tracking Number}
+          ),
+          AND(
+            {Warehouse–EasyPost Tracker ID},
+            {Warehouse–Delivered At} = BLANK()
+          )
         ),
         {Warehouse–Service} = BLANK()
       ),
@@ -175,7 +181,7 @@ for (let shipment of shipmentRequests) {
   if (!shipment.fields['Warehouse–Labor Cost']) updates['Warehouse–Labor Cost'] = laborCost(matchingOrder)
   if (!shipment.fields['Warehouse–Items Ordered JSON']) updates['Warehouse–Items Ordered JSON'] = JSON.stringify(matchingOrder, null, 2)
 
-  if (!shipment.fields['Warehouse–EasyPost Tracker ID'] && !!matchingShipment.trackingNumber) {
+  if (!shipment.fields['Warehouse–Tracking URL'] && !!matchingShipment.trackingNumber) {
     if (!shipment.fields['Warehouse–Tracking Number']) updates['Warehouse–Tracking Number'] = matchingShipment.trackingNumber
 
     try {
@@ -190,7 +196,12 @@ for (let shipment of shipmentRequests) {
       updates['Warehouse–Tracking URL'] = tracker.public_url
     } catch {
       // api error
-      console.log("  Error making tracker")
+      console.log("  Error making EasyPost tracker")
+
+      if (matchingShipment.trackingUrl) {
+        console.log("    Defaulting to carrier tracking URL")
+        updates['Warehouse–Tracking URL'] = matchingShipment.trackingUrl
+      }
     }
   }
 
