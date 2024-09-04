@@ -30,3 +30,17 @@ export function convertKeysToLowerCamelCase(obj) {
 export function laborCost(zenventoryOrder) {
   return 1.80 + (zenventoryOrder.length * 0.20)
 }
+
+export function median(numbers) {
+  if (numbers.length === 0) return null
+
+  numbers.sort((a, b) => a - b)
+
+  const middle = Math.floor(numbers.length / 2)
+
+  if (numbers.length % 2 === 0) {
+    return (numbers[middle - 1] + numbers[middle]) / 2
+  } else {
+    return numbers[middle]
+  }
+}

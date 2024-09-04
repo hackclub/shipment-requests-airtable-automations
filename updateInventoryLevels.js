@@ -1,6 +1,7 @@
 import Airtable from 'airtable'
 
-import { base64Encode, nullify } from './util'
+import { base64Encode, laborCost, median, nullify } from './util'
+import { getZenventoryInventory, getZenventoryOrders, getZenventoryPurchaseOrders, getZenventoryShipments } from './zenventory'
 
 require('dotenv').config()
 
@@ -50,6 +51,20 @@ console.log("Loading Zenventory purchase orders for unit cost calculations...")
 let zenventoryPurchaseOrders = await getZenventoryPurchaseOrders(process.env.ZENVENTORY_API_KEY, process.env.ZENVENTORY_API_SECRET)
 let unitCosts = calculateUnitCosts(zenventoryPurchaseOrders)
 
+console.log("Loading Zenventory shipments & orders for median postage cost calculations...")
+let zenventoryShipments = await getZenventoryShipments(process.env.ZENVENTORY_API_KEY, process.env.ZENVENTORY_API_SECRET)
+let zenventoryOrders = await getZenventoryOrders(process.env.ZENVENTORY_API_KEY, process.env.ZENVENTORY_API_SECRET)
+
+let enrichedShipments = zenventoryShipments.map(s => {
+  s['orderItems'] = zenventoryOrders[s.orderNumber]
+
+  if (!s['orderItems']) {
+    return null
+  }
+
+  return s
+}).filter(s => s)
+
 console.log("Loading Airtable inventory...")
 let airtableInventory = await getAirtableInventory(airtable)
 
@@ -57,10 +72,22 @@ for (let record of airtableInventory) {
   let zenRecord = zenventoryInventory.find(z => z.item.sku == record.fields['SKU'])
   let unitCost = unitCosts[zenRecord.item.sku] ? unitCosts[zenRecord.item.sku].unitCost : null
 
+  let shipments = enrichedShipments.filter(s => s.orderItems.find(i => i.sku == record.fields['SKU']))
+
+  let usaShipments = shipments.filter(s => s.country == 'US')
+  let nonUsaShipments = shipments.filter(s => s.country != 'US')
+
+  let medianUsaCost = median(usaShipments.map(s => parseFloat(s.shippingHandling) + laborCost(s.orderItems)))
+  let medianNonUsaCost = median(nonUsaShipments.map(s => parseFloat(s.shippingHandling) + laborCost(s.orderItems)))
+
   await record.updateFields({
     'In Stock': nullify(zenRecord.sellable),
     'Inbound': nullify(zenRecord.inbound),
-    'Unit Cost': nullify(unitCost)
+    'Unit Cost': nullify(unitCost),
+    'Median USA Postage + Labor': nullify(medianUsaCost),
+    'Median Global Postage + Labor': nullify(medianNonUsaCost),
+    'USA Shipments': nullify(usaShipments.length),
+    'Global Shipments': nullify(nonUsaShipments.length)
   })
 
   console.log(`Updated ${record.fields['SKU']}`)
