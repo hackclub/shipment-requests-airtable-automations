@@ -1,11 +1,9 @@
 import { laborCost } from "./util"
 
 import Airtable from 'airtable'
-import EasyPost from '@easypost/api'
 import { getZenventoryOrders, getZenventoryShipments } from './zenventory'
 
 let airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID)
-let easypost = new EasyPost(process.env.EASYPOST_API_KEY)
 
 async function getAirtableShipmentRequests(airtableBase) {
   return new Promise((resolve, reject) => {
@@ -14,26 +12,11 @@ async function getAirtableShipmentRequests(airtableBase) {
     airtableBase('Shipment Requests').select({
       // we are setting Warehouse–Service when we detect a shipment, so if it's
       // blank then we know that the item hasn't shipped yet
-      //
-      // if easypost tracker id is set, but delivered at is not, then the item
-      // is en route and we need to check delivery status
       filterByFormula: `
 AND(
   OR(
     OR(
-      OR(
-        OR(
-          AND(
-            {Warehouse–EasyPost Tracker ID} = BLANK(),
-            {Warehouse–Tracking Number}
-          ),
-          AND(
-            {Warehouse–EasyPost Tracker ID},
-            {Warehouse–Delivered At} = BLANK()
-          )
-        ),
-        {Warehouse–Service} = BLANK()
-      ),
+      {Warehouse–Service} = BLANK(),
       {Warehouse–Items Ordered JSON} = BLANK()
     ),
     {Warehouse–Labor Cost} = BLANK()
@@ -71,25 +54,6 @@ for (let shipment of shipmentRequests) {
     continue
   }
 
-  // if the package has shipped, check and update the delivery status
-  if (shipment.fields['Warehouse–Service']) {
-    let trackerId = shipment.fields['Warehouse–EasyPost Tracker ID']
-
-    if (trackerId && !shipment.fields['Warehouse–Delivered At']) {
-      console.log("  EasyPost info on file, but not marked as delivered. Checking status...")
-      const tracker = await easypost.Tracker.retrieve(trackerId)
-
-      console.log(`    Tracker status: ${tracker.status}`)
-
-      if (tracker.status == 'delivered') {
-        console.log(`      Marking as delivered in Airtable`)
-        let deliveryTime = new Date(tracker.tracking_details[tracker.tracking_details.length - 1].datetime)
-
-        updates['Warehouse–Delivered At'] = deliveryTime
-      }
-    }
-  }
-
   if (!shipment.fields['Warehouse–Service']) updates['Warehouse–Service'] = `${matchingShipment.carrier}${matchingShipment.service ? ` (${matchingShipment.service})` : ''}`
   if (!shipment.fields['Warehouse–Postage Cost']) updates['Warehouse–Postage Cost'] = Number(matchingShipment.shippingHandling)
   if (!shipment.fields['Warehouse–Labor Cost']) updates['Warehouse–Labor Cost'] = laborCost(matchingOrder)
@@ -98,25 +62,7 @@ for (let shipment of shipmentRequests) {
   if (!shipment.fields['Warehouse–Tracking URL'] && !!matchingShipment.trackingNumber) {
     if (!shipment.fields['Warehouse–Tracking Number']) updates['Warehouse–Tracking Number'] = matchingShipment.trackingNumber
 
-    try {
-      console.log("  Making tracker")
-      let tracker = await easypost.Tracker.create({
-        tracking_code: matchingShipment.trackingNumber
-      })
-
-      console.log(`Created EasyPost tracker`)
-
-      updates['Warehouse–EasyPost Tracker ID'] = tracker.id
-      updates['Warehouse–Tracking URL'] = tracker.public_url
-    } catch {
-      // api error
-      console.log("  Error making EasyPost tracker")
-
-      if (matchingShipment.trackingUrl) {
-        console.log("    Defaulting to carrier tracking URL")
-        updates['Warehouse–Tracking URL'] = matchingShipment.trackingUrl
-      }
-    }
+    updates['Warehouse–Tracking URL'] = 'https://parcelsapp.com/en/tracking/' + matchingShipment.trackingNumber
   }
 
   if (Object.keys(updates).length > 0) {
