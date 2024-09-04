@@ -17,7 +17,7 @@ AND(
   OR(
     OR(
       {Warehouse–Service} = BLANK(),
-      {Warehouse–Items Ordered JSON} = BLANK()
+      {Warehouse–Items Shipped JSON} = BLANK()
     ),
     {Warehouse–Labor Cost} = BLANK()
   ),
@@ -57,7 +57,7 @@ for (let shipment of shipmentRequests) {
   if (!shipment.fields['Warehouse–Service']) updates['Warehouse–Service'] = `${matchingShipment.carrier}${matchingShipment.service ? ` (${matchingShipment.service})` : ''}`
   if (!shipment.fields['Warehouse–Postage Cost']) updates['Warehouse–Postage Cost'] = Number(matchingShipment.shippingHandling)
   if (!shipment.fields['Warehouse–Labor Cost']) updates['Warehouse–Labor Cost'] = laborCost(matchingOrder)
-  if (!shipment.fields['Warehouse–Items Ordered JSON']) updates['Warehouse–Items Ordered JSON'] = JSON.stringify(matchingOrder, null, 2)
+  if (!shipment.fields['Warehouse–Items Shipped JSON']) updates['Warehouse–Items Shipped JSON'] = JSON.stringify(matchingOrder, null, 2)
 
   if (!shipment.fields['Warehouse–Tracking URL'] && !!matchingShipment.trackingNumber) {
     if (!shipment.fields['Warehouse–Tracking Number']) updates['Warehouse–Tracking Number'] = matchingShipment.trackingNumber
