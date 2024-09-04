@@ -1,10 +1,8 @@
-import { parseString } from 'fast-csv'
+import { laborCost } from "./util"
 
-import { base64Encode, convertKeysToLowerCamelCase, laborCost } from "./util"
-
-import trackingInfo from 'tracking-url'
 import Airtable from 'airtable'
 import EasyPost from '@easypost/api'
+import { getZenventoryOrders, getZenventoryShipments } from './zenventory'
 
 let airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID)
 let easypost = new EasyPost(process.env.EASYPOST_API_KEY)
@@ -51,90 +49,6 @@ AND(
       resolve(shipments)
     })
   })
-}
-
-async function getZenventoryOrder(apiKey, apiSecret, orderNumber) {
-  let resp = await fetch(`https://app.zenventory.com/rest/customer-orders/${orderNumber}`, {
-    headers: {
-      'Authorization': `Basic ${base64Encode(apiKey + ':' + apiSecret)}`
-    }
-  })
-
-  return await resp.json()
-}
-
-async function getZenventoryOrders(apiKey, apiSecret, reportName, startDate = '2024-01-01', endDate = '2024-12-31') {
-  let urlParams = new URLSearchParams({
-    csv: true,
-    startDate,
-    endDate
-  })
-
-  let resp = await fetch('https://app.zenventory.com/rest/reports/fulfillment/ful_order_detail?' + urlParams.toString(), {
-    headers: {
-      'Authorization': `Basic ${base64Encode(apiKey + ':' + apiSecret)}`
-    }
-  })
-
-  let csv = await resp.text()
-
-  return new Promise((resolve, reject) => {
-    let orders = {}
-
-    parseString(csv, { headers: true })
-      .on('data', row => {
-        row = convertKeysToLowerCamelCase(row)
-
-        orders[row.co] ||= []
-
-        orders[row.co].push({
-          sku: row.sku,
-          name: row.description,
-          quantity: row.orderedQty
-        })
-      })
-      .on('error', error => reject(error))
-      .on('end', rowCount => resolve(orders))
-  })
-}
-
-async function getZenventoryShipments(apiKey, apiSecret, reportName, startDate = '2024-01-01', endDate = '2024-12-31') {
-  let urlParams = new URLSearchParams({
-    csv: true,
-    startDate,
-    endDate
-  })
-
-  let resp = await fetch('https://app.zenventory.com/rest/reports/shipment/ship_client?' + urlParams.toString(), {
-    headers: {
-      'Authorization': `Basic ${base64Encode(apiKey + ':' + apiSecret)}`
-    }
-  })
-
-  let csv = await resp.text()
-
-  let rows = await new Promise((resolve, reject) => {
-    let rows = []
-
-    parseString(csv, { headers: true })
-      .on('data', row => {
-        row = convertKeysToLowerCamelCase(row)
-
-        if (row.trackingNumber) {
-          let t = trackingInfo(row.trackingNumber)
-
-          if (t) { // it will be falsy if bad tracking number
-            row.trackingUrl = t.url
-          }
-        }
-
-        rows.push(row)
-      })
-      .on('error', error => reject(error))
-      .on('end', rowCount => resolve(rows))
-  })
-
-  return rows
 }
 
 console.log("Getting shipment requests...")

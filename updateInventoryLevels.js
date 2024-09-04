@@ -21,51 +21,6 @@ async function getAirtableInventory(airtableBase) {
   })
 }
 
-async function getZenventoryInventory(apiKey, apiSecret, currentPage = 1, inventory = []) {
-  const pageSize = 100
-
-  let urlParams = new URLSearchParams({
-    perPage: pageSize,
-    page: currentPage
-  })
-
-  let resp = await fetch('https://app.zenventory.com/rest/inventory?' + urlParams.toString(), {
-    headers: {
-      'Authorization': `Basic ${base64Encode(apiKey + ':' + apiSecret)}`
-    }
-  })
-
-  let page = await resp.json()
-
-  if (page.meta.totalPages != currentPage) {
-    return getZenventoryInventory(apiKey, apiSecret, currentPage + 1, inventory.concat(page.inventory))
-  }
-
-  return inventory.concat(page.inventory)
-}
-
-async function getZenventoryPurchaseOrders(apiKey, apiSecret, currentPage = 1, purchaseOrders = []) {
-  const pageSize = 100
-
-  let urlParams = new URLSearchParams({
-    perPage: pageSize,
-    page: currentPage
-  })
-
-  let resp = await fetch('https://app.zenventory.com/rest/purchase-orders?' + urlParams.toString(), {
-    headers: {
-      'Authorization': `Basic ${base64Encode(apiKey + ':' + apiSecret)}`
-    }
-  })
-
-  let page = await resp.json()
-
-  if (page.meta.totalPages != currentPage) {
-    return getZenventoryPurchaseOrders(apiKey, apiSecret, currentPage + 1, purchaseOrders.concat(page.purchaseOrders))
-  }
-
-  return purchaseOrders.concat(page.purchaseOrders)
-}
 
 function calculateUnitCosts(zenventoryPurchaseorders) {
   let items = zenventoryPurchaseOrders.map(po => po.items).flat()
