@@ -1,5 +1,4 @@
 import { parseString } from 'fast-csv'
-import trackingInfo from 'tracking-url'
 import { base64Encode, convertKeysToLowerCamelCase } from './util'
 
 export async function getZenventoryShipments(apiKey, apiSecret, reportName, startDate = '2024-01-01', endDate = '2024-12-31') {
@@ -23,14 +22,6 @@ export async function getZenventoryShipments(apiKey, apiSecret, reportName, star
     parseString(csv, { headers: true })
       .on('data', row => {
         row = convertKeysToLowerCamelCase(row)
-
-        if (row.trackingNumber) {
-          let t = trackingInfo(row.trackingNumber)
-
-          if (t) { // it will be falsy if bad tracking number
-            row.trackingUrl = t.url
-          }
-        }
 
         rows.push(row)
       })
