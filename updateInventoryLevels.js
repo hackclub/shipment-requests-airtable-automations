@@ -69,26 +69,30 @@ console.log("Loading Airtable inventory...")
 let airtableInventory = await getAirtableInventory(airtable)
 
 for (let record of airtableInventory) {
-  let zenRecord = zenventoryInventory.find(z => z.item.sku == record.fields['SKU'])
-  let unitCost = unitCosts[zenRecord.item.sku] ? unitCosts[zenRecord.item.sku].unitCost : null
+    try {
+        let zenRecord = zenventoryInventory.find(z => z.item.sku == record.fields['SKU'])
+        let unitCost = unitCosts[zenRecord.item.sku] ? unitCosts[zenRecord.item.sku].unitCost : null
 
-  let shipments = enrichedShipments.filter(s => s.orderItems.find(i => i.sku == record.fields['SKU']))
+        let shipments = enrichedShipments.filter(s => s.orderItems.find(i => i.sku == record.fields['SKU']))
 
-  let usaShipments = shipments.filter(s => s.country == 'US')
-  let nonUsaShipments = shipments.filter(s => s.country != 'US')
+        let usaShipments = shipments.filter(s => s.country == 'US')
+        let nonUsaShipments = shipments.filter(s => s.country != 'US')
 
-  let medianUsaCost = median(usaShipments.map(s => parseFloat(s.shippingHandling) + laborCost(s.orderItems)))
-  let medianNonUsaCost = median(nonUsaShipments.map(s => parseFloat(s.shippingHandling) + laborCost(s.orderItems)))
+        let medianUsaCost = median(usaShipments.map(s => parseFloat(s.shippingHandling) + laborCost(s.orderItems)))
+        let medianNonUsaCost = median(nonUsaShipments.map(s => parseFloat(s.shippingHandling) + laborCost(s.orderItems)))
 
-  await record.updateFields({
-    'In Stock': nullify(zenRecord.sellable),
-    'Inbound': nullify(zenRecord.inbound),
-    'Unit Cost': nullify(unitCost),
-    'Median USA Postage + Labor': nullify(medianUsaCost),
-    'Median Global Postage + Labor': nullify(medianNonUsaCost),
-    'USA Shipments': nullify(usaShipments.length),
-    'Global Shipments': nullify(nonUsaShipments.length)
-  })
-
-  console.log(`Updated ${record.fields['SKU']}`)
+        await record.updateFields({
+            'In Stock': nullify(zenRecord.sellable),
+            'Inbound': nullify(zenRecord.inbound),
+            'Unit Cost': nullify(unitCost),
+            'Median USA Postage + Labor': nullify(medianUsaCost),
+            'Median Global Postage + Labor': nullify(medianNonUsaCost),
+            'USA Shipments': nullify(usaShipments.length),
+            'Global Shipments': nullify(nonUsaShipments.length)
+        })
+    } catch (e) {
+        console.error(`${e} while updating ${record.id}!`)
+        continue
+    }
+    console.log(`Updated ${record.fields['SKU']}`)
 }
