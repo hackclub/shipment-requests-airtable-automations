@@ -84,7 +84,7 @@ for (let record of airtableInventory) {
         await record.updateFields({
             'In Stock': nullify(zenRecord.sellable),
             'Inbound': nullify(zenRecord.inbound),
-            'Unit Cost': nullify(unitCost),
+            'Unit Cost': record.fields['Unit Cost Override'] || nullify(unitCost),
             'Median USA Postage + Labor': nullify(medianUsaCost),
             'Median Global Postage + Labor': nullify(medianNonUsaCost),
             'USA Shipments': nullify(usaShipments.length),
